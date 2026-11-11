@@ -48,10 +48,10 @@
   $$('[data-day]').forEach((el) => { el.textContent = String(now.getDate()); });
   $$('[data-year]').forEach((el) => { el.textContent = String(now.getFullYear()); });
 
-  /* ---------- 3. Foto in vetro bombato (WebGL) ---------- */
+  /* ---------- 3. Foto: vetro bombato (WebGL) ed effetto bolla al tocco ---------- */
   // Il bordo della foto rifrange come un vetro spesso: ingrandisce ciò che c'è appena dentro,
   // separa un filo i colori e prende un riflesso bianco dal lato della luce.
-  // La luce segue il puntatore; su telefono gira piano da sola.
+  // Quando la tocchi si schiaccia sotto il dito e al rilascio rimbalza come una bolla.
   const VERT = `
     attribute vec2 a;
     varying vec2 v;
@@ -65,6 +65,8 @@
     uniform float bev;
     uniform vec2 light;
     uniform float shine;
+    uniform float press;
+    uniform vec2 touch;
     float box(vec2 p, vec2 b, float r) {
       vec2 q = abs(p) - b + r;
       return length(max(q, 0.)) + min(max(q.x, q.y), 0.) - r;
@@ -80,30 +82,142 @@
                     box(p + e.yx, hb, rad) - box(p - e.yx, hb, rad));
       n = n / max(length(n), 1e-4);
       float t = clamp(1. + d / bev, 0., 1.);
-      float k = t * t;
-      vec2 uv = (p - n * k * bev * .55) / res + .5;
+      float k = t * t * (1. + press * .6);
+      vec2 dp = p - touch * res;
+      float fall = exp(-dot(dp, dp) / (res.x * res.x * .07));
+      vec2 q = p - dp * fall * press * .24;
+      vec2 uv = (q - n * k * bev * .55) / res + .5;
       vec2 c = uv - .5;
       uv = .5 + c * (.955 + .09 * dot(c, c));
       vec2 ca = n * k * 2.4 / res;
       vec3 col = vec3(texture2D(img, uv - ca).r, texture2D(img, uv).g, texture2D(img, uv + ca).b);
       float lit = max(dot(n, light), 0.);
       float back = max(dot(n, -light), 0.);
+      float s = shine * (1. + press * .35);
       col *= 1. - .2 * smoothstep(.15, 1., t) * (1. - lit);
-      col += pow(lit, 3.) * smoothstep(.68, 1., t) * .85 * shine;
-      col += pow(lit, 1.5) * smoothstep(.93, 1., t) * .35 * shine;
-      col += pow(back, 3.) * smoothstep(.86, 1., t) * .14 * shine;
-      col += .04 * smoothstep(.2, 1., v.y) * shine;
+      col += pow(lit, 3.) * smoothstep(.68, 1., t) * .85 * s;
+      col += pow(lit, 1.5) * smoothstep(.93, 1., t) * .35 * s;
+      col += pow(back, 3.) * smoothstep(.86, 1., t) * .14 * s;
+      col += .04 * smoothstep(.2, 1., v.y) * s;
+      col += fall * press * .06;
       gl_FragColor = vec4(col * a, a);
     }`;
 
-  function initGlass() {
+  function initAvatar() {
     const box = document.querySelector('.avatar');
-    const canvas = box && box.querySelector('.avatar__gl');
-    const photo = box && box.querySelector('.avatar__photo');
+    if (!box) return;
+    const canvas = box.querySelector('.avatar__gl');
+    const photo = box.querySelector('.avatar__photo');
+
+    // stato: luce (angolo, y verso l'alto), riflesso, molla della bolla, pressione del dito
+    const S = {
+      ang: -.6, target: 2.25, hoverAng: null, shine: reduceMotion ? .95 : .25, shineTarget: .95,
+      sx: 1, sy: 1, vx: 0, vy: 0, tx: 1, ty: 1, pressed: false, press: 0, touchX: 0, touchY: 0,
+    };
+    if (reduceMotion) S.ang = S.target;
+    let draw = () => {};
+    let raf = 0;
+    let last = 0;
+    let visible = true;
+    const delta = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
+
+    const tick = (t) => {
+      raf = 0;
+      const dt = last ? Math.min(.034, (t - last) / 1000) : .016;
+      last = t;
+
+      const goal = S.hoverAng !== null ? S.hoverAng : S.target;
+      const da = delta(S.ang, goal);
+      S.ang += da * (S.hoverAng !== null ? .14 : .05);
+      S.shine += (S.shineTarget - S.shine) * .05;
+
+      // molla smorzata: rimbalza un paio di volte e si ferma in circa mezzo secondo
+      const K = 520;
+      const C = 15;
+      S.vx += (-K * (S.sx - S.tx) - C * S.vx) * dt;
+      S.sx += S.vx * dt;
+      S.vy += (-K * (S.sy - S.ty) - C * S.vy) * dt;
+      S.sy += S.vy * dt;
+      S.press += ((S.pressed ? 1 : 0) - S.press) * .2;
+
+      const springing = S.pressed || S.press > .01
+        || Math.abs(S.sx - S.tx) + Math.abs(S.sy - S.ty) + Math.abs(S.vx) + Math.abs(S.vy) > .002;
+      if (!springing) { S.sx = S.tx; S.sy = S.ty; S.vx = 0; S.vy = 0; S.press = 0; }
+      box.style.setProperty('--sx', S.sx.toFixed(4));
+      box.style.setProperty('--sy', S.sy.toFixed(4));
+      draw();
+
+      const lighting = Math.abs(da) > .002 || Math.abs(S.shineTarget - S.shine) > .002;
+      if ((springing || lighting) && visible && !document.hidden) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        last = 0;
+        if (!springing) box.classList.remove('is-squishing');
+      }
+    };
+    const kick = () => { if (!raf) raf = requestAnimationFrame(tick); };
+
+    // --- effetto bolla (funziona anche senza WebGL: è una trasformazione CSS)
+    if (!reduceMotion) {
+      box.addEventListener('pointerdown', (e) => {
+        const r = box.getBoundingClientRect();
+        S.touchX = clamp((e.clientX - r.left) / r.width, 0, 1) - .5;
+        S.touchY = .5 - clamp((e.clientY - r.top) / r.height, 0, 1);
+        S.pressed = true;
+        S.tx = .92;
+        S.ty = .92;
+        S.vx += 1.4;   // si allarga e si abbassa sotto il dito
+        S.vy -= 1.4;
+        box.classList.add('is-squishing');
+        kick();
+      });
+      const release = () => {
+        if (!S.pressed) return;
+        S.pressed = false;
+        S.tx = 1;
+        S.ty = 1;
+        S.vx -= 2.4;   // al rilascio si allunga e rimbalza
+        S.vy += 2.4;
+        kick();
+      };
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => box.addEventListener(ev, release));
+      box.addEventListener('contextmenu', (e) => e.preventDefault());
+    }
+
+    // --- su desktop la luce e l'inclinazione seguono il mouse
+    if (finePointer && !reduceMotion) {
+      let frame = 0;
+      addEventListener('pointermove', (e) => {
+        if (e.pointerType === 'touch') return;
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(() => {
+          const r = box.getBoundingClientRect();
+          const dx = e.clientX - (r.left + r.width / 2);
+          const dy = e.clientY - (r.top + r.height / 2);
+          S.hoverAng = Math.atan2(-dy, dx);
+          box.style.setProperty('--ry', (clamp(dx / (innerWidth * .5), -1, 1) * 6).toFixed(2) + 'deg');
+          box.style.setProperty('--rx', (-clamp(dy / (innerHeight * .5), -1, 1) * 6).toFixed(2) + 'deg');
+          kick();
+        });
+      }, { passive: true });
+      document.documentElement.addEventListener('mouseleave', () => {
+        S.hoverAng = null;
+        box.style.removeProperty('--rx');
+        box.style.removeProperty('--ry');
+        kick();
+      });
+    }
+
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(([en]) => { visible = en.isIntersecting; if (visible) kick(); }).observe(box);
+    }
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) kick(); });
+
+    // --- vetro in WebGL (se il browser non lo permette resta la versione CSS)
     if (!canvas || !photo) return;
     let gl = null;
     try { gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: false }); } catch (_) { gl = null; }
-    if (!gl) return;   // resta la versione CSS
+    if (!gl) return;
 
     const compile = (type, src) => {
       const s = gl.createShader(type);
@@ -128,19 +242,12 @@
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     const u = (name) => gl.getUniformLocation(prog, name);
-    const uRes = u('res'), uRad = u('rad'), uBev = u('bev'), uLight = u('light'), uShine = u('shine');
+    const U = {
+      res: u('res'), rad: u('rad'), bev: u('bev'), light: u('light'),
+      shine: u('shine'), press: u('press'), touch: u('touch'),
+    };
 
     let ready = false;
-    // luce: angolo in radianti (y verso l'alto); parte da in basso a destra e sale in alto a sinistra
-    let ang = -.6;
-    let target = 2.25;
-    let shine = 0;
-    let shineTarget = .95;
-    let hoverAng = null;
-    let raf = 0;
-    let visible = true;
-    let last = 0;
-
     const size = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const w = Math.round(box.clientWidth * dpr);
@@ -148,39 +255,21 @@
       return w;
     };
 
-    const draw = () => {
+    draw = () => {
       const w = size();
       if (!w || !ready) return;
       gl.viewport(0, 0, w, w);
-      gl.uniform2f(uRes, w, w);
-      gl.uniform1f(uRad, w * .225);
-      gl.uniform1f(uBev, w * .11);
-      gl.uniform2f(uLight, Math.cos(ang), Math.sin(ang));
-      gl.uniform1f(uShine, shine);
+      gl.uniform2f(U.res, w, w);
+      gl.uniform1f(U.rad, w * .225);
+      gl.uniform1f(U.bev, w * .11);
+      gl.uniform2f(U.light, Math.cos(S.ang), Math.sin(S.ang));
+      gl.uniform1f(U.shine, S.shine);
+      gl.uniform1f(U.press, S.press);
+      gl.uniform2f(U.touch, S.touchX, S.touchY);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     };
-
-    // differenza tra due angoli, sempre lungo la via più corta
-    const delta = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
-
-    const idle = !finePointer && !reduceMotion;   // telefono: la luce oscilla piano da sola
-    const tick = (t) => {
-      raf = 0;
-      if (!visible || document.hidden) return;
-      if (idle && t > 2800 && t - last < 33) { raf = requestAnimationFrame(tick); return; }   // ~30 fps a riposo
-      last = t;
-      let goal = hoverAng !== null ? hoverAng : target;
-      if (idle && t > 2800) goal = 2.0 + Math.sin(t * .00045) * 1.1;
-      const da = delta(ang, goal);
-      ang += da * (hoverAng !== null ? .14 : .05);
-      shine += (shineTarget - shine) * .05;
-      draw();
-      const moving = Math.abs(da) > .002 || Math.abs(shineTarget - shine) > .002 || idle;
-      if (moving) raf = requestAnimationFrame(tick);
-    };
-    const kick = () => { if (!raf && ready) raf = requestAnimationFrame(tick); };
 
     const start = () => {
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -199,10 +288,9 @@
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       ready = true;
-      if (reduceMotion) { ang = target; shine = shineTarget; } else { shine = .25; }
       draw();
       box.classList.add('has-gl');
-      setTimeout(kick, reduceMotion ? 0 : 650);   // il riflesso parte quando la foto è a fuoco
+      setTimeout(kick, reduceMotion ? 0 : 650);   // il riflesso gira quando la foto è a fuoco
     };
 
     canvas.addEventListener('webglcontextlost', (e) => {
@@ -210,44 +298,14 @@
       ready = false;
       box.classList.remove('has-gl');
     });
-
-    if (finePointer && !reduceMotion) {
-      let frame = 0;
-      addEventListener('pointermove', (e) => {
-        if (e.pointerType === 'touch') return;
-        cancelAnimationFrame(frame);
-        frame = requestAnimationFrame(() => {
-          const r = box.getBoundingClientRect();
-          const dx = e.clientX - (r.left + r.width / 2);
-          const dy = e.clientY - (r.top + r.height / 2);
-          hoverAng = Math.atan2(-dy, dx);
-          const x = clamp(dx / (innerWidth * .5), -1, 1);
-          const y = clamp(dy / (innerHeight * .5), -1, 1);
-          box.style.setProperty('--ry', (x * 6).toFixed(2) + 'deg');
-          box.style.setProperty('--rx', (-y * 6).toFixed(2) + 'deg');
-          kick();
-        });
-      }, { passive: true });
-      document.documentElement.addEventListener('mouseleave', () => {
-        hoverAng = null;
-        box.style.removeProperty('--rx');
-        box.style.removeProperty('--ry');
-        kick();
-      });
-    }
-
     if ('ResizeObserver' in window) new ResizeObserver(() => { draw(); }).observe(box);
-    if ('IntersectionObserver' in window) {
-      new IntersectionObserver(([en]) => { visible = en.isIntersecting; if (visible) kick(); }).observe(box);
-    }
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) kick(); });
 
     if (photo.complete && photo.naturalWidth) start();
     else photo.addEventListener('load', start, { once: true });
   }
-  initGlass();
+  initAvatar();
 
-  /* ---------- 4. Card inclinabili e righe con alone ---------- */
+  /* ---------- 4. Card inclinabili e righe con alone (solo mouse) ---------- */
   if (finePointer && !reduceMotion) {
     $$('[data-tilt]').forEach((el) => {
       const max = Number(el.dataset.tilt) || 6;
@@ -305,13 +363,20 @@
 
   /* ---------- 6. Schede progetto ---------- */
   const sheets = $$('dialog.sheet');
-  const canMorph = typeof document.startViewTransition === 'function' && !reduceMotion;
+  // la card che si trasforma nella scheda solo su computer: sul telefono la scheda entra subito, leggibile
+  const canMorph = typeof document.startViewTransition === 'function' && !reduceMotion && finePointer;
   const cardFor = (id) => document.querySelector(`.projects [data-project="${id}"]`);
   const clearHash = () => {
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   };
   // loghi e scritte della scheda già decodificati: niente immagini che compaiono a metà animazione
   const decodeImages = (sheet) => Promise.all($$('img', sheet).map((img) => (img.decode ? img.decode().catch(() => {}) : null)));
+  // una transizione interrotta da un'altra non è un errore: niente avvisi in console
+  const quiet = (vt) => {
+    vt.ready.catch(() => {});
+    vt.updateCallbackDone.catch(() => {});
+    vt.finished.catch(() => {});
+  };
 
   const opening = new Set();
   async function openSheet(id, { push = true, animate = true } = {}) {
@@ -349,13 +414,6 @@
     return true;
   }
 
-  // una transizione interrotta da un'altra non è un errore: niente avvisi in console
-  function quiet(vt) {
-    vt.ready.catch(() => {});
-    vt.updateCallbackDone.catch(() => {});
-    vt.finished.catch(() => {});
-  }
-
   function closeSheet(sheet, { animate = true } = {}) {
     if (!sheet || !sheet.open) return;
     const to = cardFor(sheet.id);
@@ -374,7 +432,7 @@
       setTimeout(() => {
         sheet.classList.remove('is-closing');
         sheet.close();
-      }, 220);
+      }, 200);
     } else {
       sheet.close();
     }

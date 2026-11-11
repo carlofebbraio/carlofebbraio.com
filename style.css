@@ -39,8 +39,6 @@
   --shadow: var(--ring), 0 1px 2px rgb(20 20 22 / .05), 0 4px 12px -4px rgb(20 20 22 / .09);
   --shadow-up: var(--ring), 0 2px 4px rgb(20 20 22 / .05), 0 14px 28px -10px rgb(20 20 22 / .2);
 
-  /* grana fine: dà materia a card e gradienti ed evita le bande di colore */
-  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* ---------- base ---------- */
@@ -96,51 +94,32 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 /* ---------- luce blu dal basso ---------- */
 
+/* Scende di 30vh sotto lo schermo: su iPhone copre anche la zona dietro la barra di Safari
+   e il rimbalzo in fondo alla pagina. Si alza all'apertura, poi resta ferma (niente scatti). */
 .horizon {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
-  height: 68vh;
+  bottom: -30vh;
+  height: 98vh;
   z-index: -1;
   pointer-events: none;
   overflow: hidden;
-  --arc: ellipse 74vw 58vh at 50% 110%;
+  background: radial-gradient(var(--arc),
+    #04072a 0%, #0a1784 15%, #1736e6 31%, #3c78ff 47%, #8db8ff 63%,
+    rgb(207 224 255 / .7) 77%, rgb(245 245 244 / 0) 92%);
+  --arc: ellipse 74vw 58vh at 50% calc(100% - 23vh);
+  animation: horizon-rise 1.8s cubic-bezier(.16, 1, .3, 1) .15s backwards;
 }
-.horizon::before,
+/* un riflesso ciano sull'arco */
 .horizon::after {
   content: "";
   position: absolute;
   inset: 0;
-  transform-origin: 50% 100%;
-}
-/* l'arco: blu notte in basso, poi blu elettrico, celeste e la pagina */
-.horizon::before {
-  background: radial-gradient(var(--arc),
-    #04072a 0%, #0a1784 15%, #1736e6 31%, #3c78ff 47%, #8db8ff 63%,
-    rgb(207 224 255 / .7) 77%, rgb(245 245 244 / 0) 92%);
-  animation:
-    horizon-rise 2.4s cubic-bezier(.16, 1, .3, 1) .15s backwards,
-    horizon-breathe 11s ease-in-out 2.6s infinite alternate;
-}
-/* un riflesso ciano che scorre piano lungo l'arco */
-.horizon::after {
-  background: radial-gradient(ellipse 36vw 30vh at 50% 100%, rgb(51 234 247 / .42), rgb(51 234 247 / 0) 72%);
-  mix-blend-mode: screen;
-  animation:
-    horizon-rise 2.4s cubic-bezier(.16, 1, .3, 1) .3s backwards,
-    horizon-drift 22s ease-in-out 2.8s infinite;
+  background: radial-gradient(ellipse 34vw 26vh at 58% calc(100% - 26vh), rgb(51 234 247 / .35), rgb(51 234 247 / 0) 72%);
 }
 @keyframes horizon-rise {
-  from { opacity: 0; transform: translateY(40%) scaleY(.82); }
-}
-@keyframes horizon-breathe {
-  to { transform: scale(1.05, 1.1); }
-}
-@keyframes horizon-drift {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-26vw); }
-  75% { transform: translateX(26vw); }
+  from { opacity: 0; transform: translateY(26vh); }
 }
 
 /* ---------- 1. profilo ---------- */
@@ -182,8 +161,12 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   width: var(--s);
   height: var(--s);
   border-radius: var(--r);
-  transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) scale(var(--sx, 1), var(--sy, 1));
   transition: transform 1.1s var(--ease);
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
   box-shadow:
     0 2px 3px rgb(0 0 0 / .07),
     0 14px 26px -10px rgb(0 0 0 / .28),
@@ -198,7 +181,10 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   height: 100%;
   border-radius: inherit;
 }
+.avatar.is-squishing { transition: none; }   /* la bolla segue la molla in script.js */
 .avatar__photo { object-fit: cover; }
+.avatar img,
+.avatar canvas { pointer-events: none; -webkit-user-drag: none; }
 .avatar__gl { opacity: 0; transition: opacity .3s; }
 .avatar__glass {
   pointer-events: none;
@@ -249,19 +235,6 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   border-radius: inherit;
   isolation: isolate;
   background: var(--card-bg);
-  -webkit-mask-image: -webkit-radial-gradient(#fff, #000);
-}
-/* grana */
-.pcard__surface::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  background: var(--grain);
-  background-size: 180px 180px;
-  mix-blend-mode: overlay;
-  opacity: var(--grain-o, .3);
 }
 /* bordo smussato e lucido */
 .pcard__surface::after {
@@ -342,16 +315,19 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .projects__track > li:nth-child(2) .pcard { --shine-delay: 1.95s; }
 .projects__track > li:nth-child(3) .pcard { --shine-delay: 2.3s; }
 
-/* il riflesso che segue il puntatore */
-.pcard__glare {
-  position: absolute;
-  z-index: 5;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity .6s var(--ease);
-  background: radial-gradient(60% 90% at var(--gx, 50%) var(--gy, 0%), rgb(255 255 255 / var(--glare, .22)), rgb(255 255 255 / 0) 70%);
-  mix-blend-mode: soft-light;
+/* il riflesso che segue il puntatore (solo col mouse) */
+.pcard__glare { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  .pcard__glare {
+    display: block;
+    position: absolute;
+    z-index: 5;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .6s var(--ease);
+    background: radial-gradient(60% 90% at var(--gx, 50%) var(--gy, 0%), rgb(255 255 255 / .16), rgb(255 255 255 / 0) 70%);
+  }
 }
 
 .pcard.is-tilting { transition: transform .12s linear, box-shadow .8s var(--ease); }
@@ -374,7 +350,6 @@ a.pcard:active { --ty: -1px; transition-duration: .2s; }
   --card-fg2: rgb(6 24 38 / .62);
   --glow: rgb(36 99 251 / .6);
   --rim: rgb(255 255 255 / .3);
-  --grain-o: .22;
   --shine: .5;
   --mark-h: 58%;
   --mark-r: 8%;
@@ -431,10 +406,8 @@ a.pcard:active { --ty: -1px; transition-duration: .2s; }
   font-weight: 500;
   letter-spacing: .01em;
   color: var(--ink-soft);
-  background: rgb(255 255 255 / .62);
-  -webkit-backdrop-filter: blur(10px) saturate(1.4);
-  backdrop-filter: blur(10px) saturate(1.4);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .7), 0 2px 8px -3px rgb(20 20 60 / .15);
+  background: rgb(255 255 255 / .86);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .9), 0 2px 8px -3px rgb(20 20 60 / .18);
 }
 
 .links {
@@ -605,10 +578,11 @@ a.pcard:active { --ty: -1px; transition-duration: .2s; }
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+/* quasi opaco: il testo della scheda è leggibile da subito, anche prima che arrivi la sfocatura */
 .sheet::backdrop {
-  background: rgb(245 245 244 / .8);
-  -webkit-backdrop-filter: blur(22px) saturate(1.4);
-  backdrop-filter: blur(22px) saturate(1.4);
+  background: rgb(245 245 244 / .94);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
 }
 .sheet__inner {
   width: 100%;
@@ -715,7 +689,7 @@ img.logo { object-fit: cover; }
 .sheet .row { margin-top: 4px; }
 
 /* aperture e chiusure */
-.sheet[open]::backdrop { animation: fade-in .4s var(--ease) backwards; }
+.sheet[open]::backdrop { animation: fade-in .16s ease-out backwards; }
 .sheet[open] .sheet__close { animation: fade-in .4s .1s var(--ease) backwards; }
 /* senza View Transitions la card entra da sola; con le View Transitions arriva dalla griglia */
 .sheet.pop[open] .pcard--lg { animation: pop-in .6s var(--ease) backwards; }
@@ -817,7 +791,7 @@ img.logo { object-fit: cover; }
   .hero__name, .hero__bio { font-size: 17px; }
   .projects { margin-top: 36px; }
   .connect { margin-top: 44px; }
-  .horizon { height: 60vh; --arc: ellipse 118vw 50vh at 50% 108%; }
+  .horizon { height: 90vh; --arc: ellipse 118vw 50vh at 50% calc(100% - 25vh); }
 }
 
 /* ---------- chi preferisce meno movimento ---------- */
