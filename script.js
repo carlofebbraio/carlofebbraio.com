@@ -363,20 +363,34 @@
 
   /* ---------- 6. Schede progetto ---------- */
   const sheets = $$('dialog.sheet');
-  // la card che si trasforma nella scheda solo su computer: sul telefono la scheda entra subito, leggibile
-  const canMorph = typeof document.startViewTransition === 'function' && !reduceMotion && finePointer;
+  // La card "vola" dalla sua posizione alla scheda (e ritorno): si animano solo posizione e scala,
+  // che anche il telefono muove in modo fluido.
+  const canFly = !reduceMotion && typeof Element.prototype.animate === 'function';
+  const EASE = 'cubic-bezier(.22, 1, .36, 1)';
   const cardFor = (id) => document.querySelector(`.projects [data-project="${id}"]`);
   const clearHash = () => {
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   };
   // loghi e scritte della scheda già decodificati: niente immagini che compaiono a metà animazione
   const decodeImages = (sheet) => Promise.all($$('img', sheet).map((img) => (img.decode ? img.decode().catch(() => {}) : null)));
-  // una transizione interrotta da un'altra non è un errore: niente avvisi in console
-  const quiet = (vt) => {
-    vt.ready.catch(() => {});
-    vt.updateCallbackDone.catch(() => {});
-    vt.finished.catch(() => {});
-  };
+
+  // porta visivamente `card` nel rettangolo `rect` (andata: da rect alla sua posizione; ritorno: il contrario)
+  function fly(card, rect, back) {
+    card.getAnimations().forEach((a) => a.cancel());
+    const to = card.getBoundingClientRect();
+    if (!rect || !rect.width || !to.width) return null;
+    const at = `translate(${rect.left - to.left}px, ${rect.top - to.top}px) scale(${rect.width / to.width}, ${rect.height / to.height})`;
+    const frames = [{ transform: at }, { transform: 'translate(0, 0) scale(1, 1)' }];
+    card.style.transformOrigin = '0 0';
+    const anim = card.animate(back ? frames.reverse() : frames, {
+      duration: back ? 420 : 600,
+      delay: back ? 60 : 0,   // al ritorno parte quando il testo della scheda è già sparito
+      easing: EASE,
+      fill: back ? 'forwards' : 'none',
+    });
+    if (!back) anim.finished.then(() => { card.style.transformOrigin = ''; }, () => {});
+    return anim;
+  }
 
   const opening = new Set();
   async function openSheet(id, { push = true, animate = true } = {}) {
@@ -392,50 +406,39 @@
     opening.delete(id);
     if (sheet.open) return true;
 
-    const show = () => {
-      sheet.showModal();
-      sheet.scrollTop = 0;
-    };
-
-    if (animate && canMorph && from && big && inView(from)) {
-      sheet.classList.remove('pop');
-      from.style.viewTransitionName = 'project';
-      const vt = document.startViewTransition(() => {
-        from.style.viewTransitionName = '';
-        big.style.viewTransitionName = 'project';
-        show();
-      });
-      quiet(vt);
-      vt.finished.finally(() => { big.style.viewTransitionName = ''; });
-    } else {
-      sheet.classList.toggle('pop', animate && !reduceMotion);
-      show();
+    const fromRect = animate && canFly && from && big && inView(from) ? from.getBoundingClientRect() : null;
+    sheet.classList.remove('is-closing');
+    sheet.classList.toggle('pop', animate && !reduceMotion && !fromRect);   // senza card di partenza entra da sola
+    sheet.showModal();
+    sheet.scrollTop = 0;
+    if (fromRect) {
+      from.style.visibility = 'hidden';   // la card "parte" dalla griglia: niente doppione sotto
+      fly(big, fromRect, false);
     }
     return true;
   }
 
   function closeSheet(sheet, { animate = true } = {}) {
-    if (!sheet || !sheet.open) return;
+    if (!sheet || !sheet.open || sheet.classList.contains('is-closing')) return;
     const to = cardFor(sheet.id);
     const big = sheet.querySelector('.pcard');
-    if (animate && canMorph && to && big && inView(to)) {
-      big.style.viewTransitionName = 'project';
-      const vt = document.startViewTransition(() => {
-        big.style.viewTransitionName = '';
-        to.style.viewTransitionName = 'project';
-        sheet.close();
-      });
-      quiet(vt);
-      vt.finished.finally(() => { to.style.viewTransitionName = ''; });
-    } else if (animate && !reduceMotion) {
-      sheet.classList.add('is-closing');
-      setTimeout(() => {
-        sheet.classList.remove('is-closing');
-        sheet.close();
-      }, 200);
-    } else {
+    const finish = () => {
       sheet.close();
+      sheet.classList.remove('is-closing', 'pop');
+      if (big) {
+        big.getAnimations().forEach((a) => a.cancel());
+        big.style.transformOrigin = '';
+      }
+      if (to) to.style.visibility = '';
+    };
+    if (!animate || reduceMotion) { finish(); return; }
+    sheet.classList.add('is-closing');   // sfumano sfondo e testo, la card torna al suo posto
+    if (canFly && to && big && inView(to)) {
+      to.style.visibility = 'hidden';
+      const anim = fly(big, to.getBoundingClientRect(), true);
+      if (anim) { anim.finished.then(finish, finish); return; }
     }
+    setTimeout(finish, 240);
   }
 
   // Chiusura da pulsante, Esc o clic fuori: passa dalla cronologia,
@@ -454,6 +457,10 @@
       if (e.cancelable) { e.preventDefault(); requestClose(sheet); }
     });
     sheet.addEventListener('close', () => {
+      // chiusa in qualsiasi modo (anche Esc diretto): la card della griglia torna visibile
+      const card = cardFor(sheet.id);
+      if (card) card.style.visibility = '';
+      sheet.classList.remove('is-closing', 'pop');
       if (history.state && history.state.sheet === sheet.id) history.back();
       else if (location.hash === '#' + sheet.id) clearHash();
     });

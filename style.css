@@ -689,25 +689,20 @@ img.logo { object-fit: cover; }
 .sheet .row { margin-top: 4px; }
 
 /* aperture e chiusure */
-.sheet[open]::backdrop { animation: fade-in .16s ease-out backwards; }
-.sheet[open] .sheet__close { animation: fade-in .4s .1s var(--ease) backwards; }
-/* senza View Transitions la card entra da sola; con le View Transitions arriva dalla griglia */
-.sheet.pop[open] .pcard--lg { animation: pop-in .6s var(--ease) backwards; }
+/* All'apertura la card vola dalla griglia (script.js) mentre lo sfondo copre la pagina e il testo sale.
+   Il testo parte poco dopo lo sfondo: non si sovrappone mai alla pagina sotto. */
+.sheet[open]::backdrop { animation: fade-in .26s ease-out backwards; }
+.sheet[open] .sheet__close { animation: fade-in .4s .15s var(--ease) backwards; }
+.sheet.pop[open] .pcard--lg { animation: pop-in .6s var(--ease) backwards; }   /* link diretto: nessuna card da cui partire */
 .sheet[open] .sheet__body > * { animation: rise-in .7s var(--ease) backwards; }
-.sheet[open] .sheet__body > :nth-child(1) { animation-delay: .06s; }
-.sheet[open] .sheet__body > :nth-child(2) { animation-delay: .1s; }
-.sheet[open] .sheet__body > :nth-child(3) { animation-delay: .14s; }
-.sheet[open] .sheet__body > :nth-child(4) { animation-delay: .18s; }
-.sheet.is-closing,
-.sheet.is-closing::backdrop { animation: fade-out .22s var(--ease) forwards; }
-
-/* la card si trasforma nella scheda (browser con View Transitions) */
-::view-transition-group(project) {
-  animation-duration: .6s;
-  animation-timing-function: cubic-bezier(.22, 1, .36, 1);
-}
-::view-transition-old(root),
-::view-transition-new(root) { animation-duration: .35s; }
+.sheet[open] .sheet__body > :nth-child(1) { animation-delay: .14s; }
+.sheet[open] .sheet__body > :nth-child(2) { animation-delay: .18s; }
+.sheet[open] .sheet__body > :nth-child(3) { animation-delay: .22s; }
+.sheet[open] .sheet__body > :nth-child(4) { animation-delay: .26s; }
+/* alla chiusura spariscono prima testo e pulsante, poi lo sfondo; la card torna al suo posto */
+.sheet.is-closing .sheet__body,
+.sheet.is-closing .sheet__close { animation: fade-out .1s ease-in forwards; }
+.sheet.is-closing::backdrop { animation: fade-out .3s .1s ease-in forwards; }
 
 /* ---------- entrata della pagina ---------- */
 
