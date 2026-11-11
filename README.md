@@ -33,7 +33,7 @@ poi apri http://localhost:4321
 
 ## Online con GitHub Pages
 
-Il sito sta nel repository GitHub `carlofebbraio.com` e GitHub Pages lo pubblica a ogni `git push`.
+Il sito sta nel repository https://github.com/carlofebbraio/carlofebbraio.com e GitHub Pages lo pubblica a ogni `git push`. Il file `CNAME` dice a GitHub di servirlo su carlofebbraio.com.
 
 - **Aggiornare**: modifica i file, poi `git add -A`, `git commit -m "descrizione"`, `git push`. In circa un minuto è online.
 - **Se cambi `style.css` o `script.js`** aumenta il numero dopo `?v=` nelle due righe in cima a `index.html` (es. `?v=2`). GitHub tiene i file in memoria 10 minuti: così nessuno vede la pagina nuova con lo stile vecchio.
@@ -44,7 +44,7 @@ Il sito sta nel repository GitHub `carlofebbraio.com` e GitHub Pages lo pubblica
 
 - togli il parcheggio o l'inoltro (*Forwarding*) del dominio;
 - 4 record **A** con nome `@`: `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153`;
-- un record **CNAME** con nome `www` che punta a `TUO-UTENTE.github.io`;
+- un record **CNAME** con nome `www` che punta a `carlofebbraio.github.io`;
 - non toccare i record MX e TXT (servono all'email).
 
 Quando i DNS si aggiornano (di solito entro un'ora), in GitHub *Settings → Pages* attiva *Enforce HTTPS*. Poi metti `carlofebbraio.com` nella bio di Instagram e TikTok.
